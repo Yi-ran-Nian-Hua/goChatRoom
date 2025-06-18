@@ -66,7 +66,7 @@ func (s *Server) Handler(connection net.Conn) {
 	for {
 		select {
 		case <-isAlive:
-		case <-time.After(time.Second * 10):
+		case <-time.After(time.Second * 300):
 			// 超时, 剔除用户
 			user.SendMsg("你被踢了")
 			s.mapLock.Lock()

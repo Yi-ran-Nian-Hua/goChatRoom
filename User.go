@@ -1,6 +1,9 @@
 package main
 
-import "net"
+import (
+	"net"
+	"strings"
+)
 
 type User struct {
 	Name       string
@@ -66,6 +69,54 @@ func (u *User) DoMessage(message string) {
 			u.SendMsg(onlineUser)
 		}
 		u.Server.mapLock.Unlock()
+	} else if len(message) > 7 && message[:7] == "rename|" {
+		newName := strings.Split(message, "|")[1] // 保留右侧部分
+		// 之后去 map 中查询当前用户名是否存在
+
+		_, value := u.Server.OnlineMap[newName]
+		if value {
+			// 表示当前用户名已被使用
+			u.SendMsg("当前用户名已被使用\n")
+		} else {
+			// 更新用户名
+			// 首先删除原来的用户名
+			u.Server.mapLock.Lock()
+			delete(u.Server.OnlineMap, u.Name)
+
+			// 之后添加新的用户名
+			u.Server.OnlineMap[newName] = u
+
+			u.Server.mapLock.Unlock()
+			u.Name = newName
+			u.SendMsg("您已更新用户名" + newName)
+
+		}
+
+	} else if len(message) > 4 && message[:3] == "to|" {
+		// 消息格式: to|张三|消息内容
+
+		// 获取对方的用户名
+		remoteName := strings.Split(message, "|")[1]
+		if remoteName == "" {
+			u.SendMsg("消息格式不正确，请使用 \"to|张三|你好啊\"格式。\n")
+			return
+		}
+
+		// 查找是否存在
+		remoteUser, ok := u.Server.OnlineMap[remoteName]
+		if !ok {
+			u.SendMsg("要发送的用户不存在\n")
+			return
+		}
+
+		// 获取消息的内容, 发送消息
+		content := strings.Split(message, "|")[2]
+		if content == "" {
+			u.SendMsg("消息发送内容为空\n")
+			return
+		}
+
+		remoteUser.SendMsg(u.Name + "对您说: " + content)
 	} else {
 		u.Server.BroadCast(u, message)
 	}

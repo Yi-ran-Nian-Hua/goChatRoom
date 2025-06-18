@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"sync"
+	"time"
 )
 
 // Server 定义 server 结构体
@@ -36,7 +37,7 @@ func NewServer(ip string, port int) *Server {
 func (s *Server) Handler(connection net.Conn) {
 	user := NewUser(connection, s)
 	user.Online(s)
-
+	isAlive := make(chan bool)
 	// 接受客户端发送来的信息
 	go func() {
 		buffer := make([]byte, 4096)
@@ -57,11 +58,28 @@ func (s *Server) Handler(connection net.Conn) {
 			// 获取消息进行广播
 			msg := string(buffer[:num-1])
 			user.DoMessage(msg)
+			isAlive <- true
 		}
 	}()
 
 	// 当前 handler 阻塞
-	select {}
+	for {
+		select {
+		case <-isAlive:
+		case <-time.After(time.Second * 10):
+			// 超时, 剔除用户
+			user.SendMsg("你被踢了")
+			s.mapLock.Lock()
+			delete(s.OnlineMap, user.Name)
+			s.mapLock.Unlock()
+
+			close(user.Channel)     // 关闭管道
+			user.Connection.Close() // 关闭连接
+
+			return
+		}
+	}
+
 }
 
 func (s *Server) BroadCast(user *User, msg string) {

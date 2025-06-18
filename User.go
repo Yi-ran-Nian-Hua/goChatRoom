@@ -33,3 +33,21 @@ func NewUser(conn net.Conn) *User {
 
 	return user
 }
+
+func (u *User) Online(s *Server) {
+	// 用户上线, 将其添加到 onlineMap 中
+	s.mapLock.Lock()
+	s.OnlineMap[u.Name] = u
+	s.mapLock.Unlock()
+
+	// 广播当前用户上线消息
+	s.BroadCast(u, "已上线")
+}
+
+func (u *User) Offline(s *Server) {
+	s.BroadCast(u, "下线")
+}
+
+func (u *User) DoMessage(s *Server, message string) {
+	s.BroadCast(u, message)
+}

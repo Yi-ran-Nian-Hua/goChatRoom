@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"sync"
 )
@@ -34,14 +35,30 @@ func NewServer(ip string, port int) *Server {
 
 func (s *Server) Handler(connection net.Conn) {
 	user := NewUser(connection)
+	user.Online(s)
 
-	// 用户上线, 将其添加到 onlineMap 中
-	s.mapLock.Lock()
-	s.OnlineMap[user.Name] = user
-	s.mapLock.Unlock()
+	// 接受客户端发送来的信息
+	go func() {
+		buffer := make([]byte, 1024)
+		num, err := connection.Read(buffer)
 
-	// 广播当前用户上线消息
-	s.BroadCast(user, "已上线")
+		// 这个时候用户发送的消息已经结束
+		if num == 0 {
+			user.Offline(s)
+			return
+		}
+
+		// 如果错误码不为空, 并且不为 EOF 则认为出错
+		if err != nil && err != io.EOF {
+			fmt.Println("conn read err", err)
+			return
+		}
+
+		// 获取消息进行广播
+		msg := string(buffer[:num-1])
+		user.DoMessage(s, msg)
+
+	}()
 
 	// 当前 handler 阻塞
 	select {}

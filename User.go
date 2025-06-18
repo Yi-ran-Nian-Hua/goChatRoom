@@ -7,6 +7,9 @@ type User struct {
 	Addr       string
 	Channel    chan string
 	Connection net.Conn
+
+	// 保存用户连接到了哪个服务器中
+	Server *Server
 }
 
 // ListenMessage 监听当前 user channel 的方法, 一旦有消息就直接发送给对端客户端
@@ -18,7 +21,7 @@ func (u *User) ListenMessage() {
 }
 
 // NewUser 创建一个用户
-func NewUser(conn net.Conn) *User {
+func NewUser(conn net.Conn, server *Server) *User {
 	userAddr := conn.RemoteAddr().String()
 
 	user := &User{
@@ -26,6 +29,7 @@ func NewUser(conn net.Conn) *User {
 		Addr:       userAddr,
 		Channel:    make(chan string),
 		Connection: conn,
+		Server:     server,
 	}
 
 	// 启动监听当前 user channel 消息的 goroutine
@@ -44,10 +48,30 @@ func (u *User) Online(s *Server) {
 	s.BroadCast(u, "已上线")
 }
 
-func (u *User) Offline(s *Server) {
-	s.BroadCast(u, "下线")
+func (u *User) Offline() {
+	// 首先将用户从在线列表中移除
+	u.Server.mapLock.Lock()
+	delete(u.Server.OnlineMap, u.Name)
+	u.Server.mapLock.Unlock()
+	// 之后广播下线
+	u.Server.BroadCast(u, "下线")
 }
 
-func (u *User) DoMessage(s *Server, message string) {
-	s.BroadCast(u, message)
+func (u *User) DoMessage(message string) {
+
+	if message == "who" {
+		u.Server.mapLock.Lock()
+		for _, value := range u.Server.OnlineMap {
+			onlineUser := "[" + value.Addr + "]" + value.Name + ": 在线...\n"
+			u.SendMsg(onlineUser)
+		}
+		u.Server.mapLock.Unlock()
+	} else {
+		u.Server.BroadCast(u, message)
+	}
+
+}
+
+func (u *User) SendMsg(message string) {
+	u.Connection.Write([]byte(message))
 }
